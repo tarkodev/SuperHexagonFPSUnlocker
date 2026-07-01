@@ -361,10 +361,47 @@ def make_init_hook(start_va: int) -> bytes:
     return bytes(code)
 
 
-def make_delta1_hook(start_va: int) -> bytes:
+def make_swap_accumulator_clamp(start_va: int, swap_observed_va: int) -> bytes:
+    flag_rva = swap_observed_va - SUPPORTED_IMAGE_BASE
+    code = bytearray()
+
+    def patch_short_jump(offset: int, target_offset: int) -> None:
+        rel = target_offset - (offset + 2)
+        if not -128 <= rel <= 127:
+            raise PatchError("internal swap pacing short jump out of range")
+        code[offset + 1] = rel & 0xFF
+
+    append_image_base_to_eax(code, start_va)
+    code += bytes.fromhex("80 b8") + struct.pack("<I", flag_rva) + b"\x00"
+    no_swap_jump = len(code)
+    code += bytes.fromhex("74 00")  # je done
+    code += bytes.fromhex("c6 80") + struct.pack("<I", flag_rva) + b"\x00"
+    code += bytes.fromhex("83 bb d4 04 00 00 00")  # cmp render_acc high, 0
+    high_ready_jump = len(code)
+    code += bytes.fromhex("75 00")  # jne set ready
+    code += bytes.fromhex("8b 83 d0 04 00 00")  # mov eax, render_acc low
+    code += bytes.fromhex("3b 83 b8 00 00 00")  # cmp eax, render_interval low
+    low_done_jump = len(code)
+    code += bytes.fromhex("76 00")  # jbe done
+    set_ready_offset = len(code)
+    patch_short_jump(high_ready_jump, set_ready_offset)
+    code += bytes.fromhex("8b 83 b8 00 00 00")  # mov eax, render_interval low
+    code += bytes.fromhex("89 83 d0 04 00 00")  # render_acc low = interval low
+    code += bytes.fromhex("33 c0")  # xor eax, eax
+    code += bytes.fromhex("89 83 d4 04 00 00")  # render_acc high = 0
+    done_offset = len(code)
+    patch_short_jump(no_swap_jump, done_offset)
+    patch_short_jump(low_done_jump, done_offset)
+    code += bytes.fromhex("c3")  # ret
+    return bytes(code)
+
+
+def make_delta1_hook(start_va: int, swap_accumulator_clamp_va: int | None = None) -> bytes:
     code = bytearray()
     code += bytes.fromhex("01 b3 d0 04 00 00")  # add [render_acc], esi
     code += bytes.fromhex("11 8b d4 04 00 00")  # adc [render_acc+4], ecx
+    if swap_accumulator_clamp_va is not None:
+        code += call(start_va + len(code), swap_accumulator_clamp_va)
     code += bytes.fromhex("01 b3 a8 00 00 00")  # original add sim accumulator
     code += bytes.fromhex("8b b3 a8 00 00 00")  # original mov esi, sim_acc low
     code += bytes.fromhex("11 8b ac 00 00 00")  # original adc sim accumulator high
@@ -374,10 +411,12 @@ def make_delta1_hook(start_va: int) -> bytes:
     return bytes(code)
 
 
-def make_delta2_hook(start_va: int) -> bytes:
+def make_delta2_hook(start_va: int, swap_accumulator_clamp_va: int | None = None) -> bytes:
     code = bytearray()
     code += bytes.fromhex("01 b3 d0 04 00 00")  # add [render_acc], esi
     code += bytes.fromhex("11 bb d4 04 00 00")  # adc [render_acc+4], edi
+    if swap_accumulator_clamp_va is not None:
+        code += call(start_va + len(code), swap_accumulator_clamp_va)
     code += bytes.fromhex("01 b3 a8 00 00 00")  # original add sim accumulator
     code += bytes.fromhex("8b 83 b8 00 00 00")  # original mov eax, [ebx+0xb8]
     code += bytes.fromhex("11 bb ac 00 00 00")  # original adc sim accumulator high
@@ -385,10 +424,12 @@ def make_delta2_hook(start_va: int) -> bytes:
     return bytes(code)
 
 
-def make_delta3_hook(start_va: int) -> bytes:
+def make_delta3_hook(start_va: int, swap_accumulator_clamp_va: int | None = None) -> bytes:
     code = bytearray()
     code += bytes.fromhex("01 b3 d0 04 00 00")  # add [render_acc], esi
     code += bytes.fromhex("11 8b d4 04 00 00")  # adc [render_acc+4], ecx
+    if swap_accumulator_clamp_va is not None:
+        code += call(start_va + len(code), swap_accumulator_clamp_va)
     code += bytes.fromhex("01 b3 a8 00 00 00")  # original add sim accumulator
     code += bytes.fromhex("89 93 a4 00 00 00")  # original mov [ebx+0xa4], edx
     code += bytes.fromhex("11 8b ac 00 00 00")  # original adc sim accumulator high
@@ -674,9 +715,22 @@ def make_update_hook(
     return bytes(code)
 
 
-def make_swap_diagnostic_hook(start_va: int, swap_counter_va: int) -> bytes:
+def make_swap_hook(
+    start_va: int,
+    swap_observed_va: int | None = None,
+    swap_counter_va: int | None = None,
+) -> bytes:
     code = bytearray()
-    append_increment_counter(code, start_va, swap_counter_va)
+    if swap_observed_va is not None or swap_counter_va is not None:
+        append_image_base_to_eax(code, start_va)
+        if swap_counter_va is not None:
+            code += bytes.fromhex("ff 80") + struct.pack(
+                "<I", swap_counter_va - SUPPORTED_IMAGE_BASE
+            )
+        if swap_observed_va is not None:
+            code += bytes.fromhex("c6 80") + struct.pack(
+                "<I", swap_observed_va - SUPPORTED_IMAGE_BASE
+            ) + b"\x01"
     code += SWAP_HOOK_ORIGINAL_BYTES
     code += jmp(start_va + len(code), SWAP_HOOK_RETURN_VA)
     return bytes(code)
@@ -704,6 +758,7 @@ def build_patch_section(
     include_update_hook: bool = True,
     include_high_tick_legacy_hooks: bool = False,
     include_diagnostics: bool = False,
+    include_swap_pacing: bool = True,
     include_wall_angle_interpolation: bool = True,
     include_rotation_offset_interpolation: bool = True,
 ) -> tuple[bytes, dict[str, int]]:
@@ -730,10 +785,23 @@ def build_patch_section(
             labels[name] = section_virtual_address + len(payload)
             payload += struct.pack("<f", value)
 
+    if include_swap_pacing:
+        labels["swap_observed"] = section_virtual_address + len(payload)
+        payload += b"\x00"
+        while len(payload) % 4:
+            payload += b"\x00"
+
     if include_diagnostics:
         for name in DIAGNOSTIC_COUNTER_LABELS:
             labels[name] = section_virtual_address + len(payload)
             payload += b"\x00" * 4
+        while len(payload) % 4:
+            payload += b"\x90"
+
+    if include_swap_pacing:
+        start_va = section_virtual_address + len(payload)
+        labels["swap_accumulator_clamp"] = start_va
+        payload += make_swap_accumulator_clamp(start_va, labels["swap_observed"])
         while len(payload) % 4:
             payload += b"\x90"
 
@@ -760,7 +828,10 @@ def build_patch_section(
                 float_360_va=labels.get("float_360"),
             )
         else:
-            payload += builder(start_va)
+            if name.startswith("delta"):
+                payload += builder(start_va, labels.get("swap_accumulator_clamp"))
+            else:
+                payload += builder(start_va)
         while len(payload) % 4:
             payload += b"\x90"
 
@@ -775,10 +846,21 @@ def build_patch_section(
         while len(payload) % 4:
             payload += b"\x90"
 
-    if include_diagnostics:
+    if include_swap_pacing:
+        start_va = section_virtual_address + len(payload)
+        labels["swap"] = start_va
+        payload += make_swap_hook(
+            start_va,
+            swap_observed_va=labels["swap_observed"],
+            swap_counter_va=labels.get("diag_swap_counter") if include_diagnostics else None,
+        )
+        if include_high_tick_legacy_hooks:
+            while len(payload) % 4:
+                payload += b"\x90"
+    elif include_diagnostics:
         start_va = section_virtual_address + len(payload)
         labels["swap_diagnostic"] = start_va
-        payload += make_swap_diagnostic_hook(start_va, labels["diag_swap_counter"])
+        payload += make_swap_hook(start_va, swap_counter_va=labels["diag_swap_counter"])
         while len(payload) % 4:
             payload += b"\x90"
 
@@ -801,6 +883,7 @@ def original_patch_sites(
     include_update_hook: bool = True,
     include_high_tick_legacy_sites: bool = False,
     include_diagnostics: bool = False,
+    include_swap_pacing: bool = True,
 ) -> list[PatchSite]:
     sites = [
         PatchSite(
@@ -976,7 +1059,17 @@ def original_patch_sites(
                 ),
             ]
         )
-    if include_diagnostics:
+    if include_swap_pacing:
+        sites.append(
+            PatchSite(
+                "swap hook",
+                SWAP_HOOK_OFFSET,
+                SWAP_HOOK_VA,
+                SWAP_HOOK_ORIGINAL_BYTES,
+                b"",
+            )
+        )
+    elif include_diagnostics:
         sites.extend(
             [
                 PatchSite(
@@ -999,6 +1092,7 @@ def patched_sites(
     include_update_hook: bool = True,
     include_high_tick_legacy_sites: bool = False,
     include_diagnostics: bool = False,
+    include_swap_pacing: bool = True,
 ) -> list[PatchSite]:
     sites: list[PatchSite] = []
     for site in original_patch_sites(
@@ -1006,6 +1100,7 @@ def patched_sites(
         include_update_hook=include_update_hook,
         include_high_tick_legacy_sites=include_high_tick_legacy_sites,
         include_diagnostics=include_diagnostics,
+        include_swap_pacing=include_swap_pacing,
     ):
         replacement = site.replacement
         if site.name == "render divisor":
@@ -1028,6 +1123,8 @@ def patched_sites(
             replacement = call(site.virtual_address, labels["sim_divisor"])
         elif site.name == "tick threshold":
             replacement = jump_patch(site.virtual_address, labels["tick_threshold"], len(site.original))
+        elif site.name == "swap hook":
+            replacement = jump_patch(site.virtual_address, labels["swap"], len(site.original))
         elif site.name == "swap diagnostic hook":
             replacement = jump_patch(site.virtual_address, labels["swap_diagnostic"], len(site.original))
 
@@ -1257,6 +1354,7 @@ def restore_legacy_high_tick_patch(data: bytes, refresh_hz: int) -> bytes:
         include_draw_hook=False,
         include_update_hook=False,
         include_high_tick_legacy_hooks=True,
+        include_swap_pacing=False,
         include_rotation_offset_interpolation=False,
     )
     restored = bytearray(data)
@@ -1267,6 +1365,7 @@ def restore_legacy_high_tick_patch(data: bytes, refresh_hz: int) -> bytes:
         include_draw_hook=False,
         include_update_hook=False,
         include_high_tick_legacy_sites=True,
+        include_swap_pacing=False,
     ):
         restored[site.offset : site.offset + len(site.original)] = site.original
     return bytes(restored)
@@ -1352,16 +1451,73 @@ def analyze_image(data: bytes) -> ImageState:
         ):
             return ImageState("diagnostic", digest, len(data), True, refresh_hz=divisor)
 
+        old_diagnostic_payload, old_diagnostic_labels = build_patch_section(
+            section_va(info, section),
+            divisor,
+            include_diagnostics=True,
+            include_swap_pacing=False,
+        )
+        old_diagnostic_section_payload = slice_at(
+            data, section.raw_pointer, len(old_diagnostic_payload)
+        )
+        old_diagnostic_sites = patched_sites(
+            section_va(info, section),
+            old_diagnostic_labels,
+            divisor,
+            include_diagnostics=True,
+            include_swap_pacing=False,
+        )
+        if old_diagnostic_section_payload == old_diagnostic_payload and all_sites_match(
+            data,
+            old_diagnostic_sites,
+            replacement=True,
+        ):
+            return ImageState(
+                "legacy-no-swap-pacing",
+                digest,
+                len(data),
+                True,
+                refresh_hz=divisor,
+                reason="old patch lacks swap-aware render pacing",
+            )
+
         payload, labels = build_patch_section(section_va(info, section), divisor)
         section_payload = slice_at(data, section.raw_pointer, len(payload))
         sites = patched_sites(section_va(info, section), labels, divisor)
         if section_payload == payload and all_sites_match(data, sites, replacement=True):
             return ImageState("patched", digest, len(data), True, refresh_hz=divisor)
 
+        no_swap_payload, no_swap_labels = build_patch_section(
+            section_va(info, section),
+            divisor,
+            include_swap_pacing=False,
+        )
+        no_swap_section_payload = slice_at(data, section.raw_pointer, len(no_swap_payload))
+        no_swap_sites = patched_sites(
+            section_va(info, section),
+            no_swap_labels,
+            divisor,
+            include_swap_pacing=False,
+        )
+        if no_swap_section_payload == no_swap_payload and all_sites_match(
+            data,
+            no_swap_sites,
+            replacement=True,
+        ):
+            return ImageState(
+                "legacy-no-swap-pacing",
+                digest,
+                len(data),
+                True,
+                refresh_hz=divisor,
+                reason="old patch lacks swap-aware render pacing",
+            )
+
         no_rotation_payload, no_rotation_labels = build_patch_section(
             section_va(info, section),
             divisor,
             include_update_hook=False,
+            include_swap_pacing=False,
             include_rotation_offset_interpolation=False,
         )
         no_rotation_sites = patched_sites(
@@ -1369,6 +1525,7 @@ def analyze_image(data: bytes) -> ImageState:
             no_rotation_labels,
             divisor,
             include_update_hook=False,
+            include_swap_pacing=False,
         )
         no_rotation_section_payload = slice_at(data, section.raw_pointer, len(no_rotation_payload))
         if no_rotation_section_payload == no_rotation_payload and all_sites_match(
@@ -1402,6 +1559,7 @@ def analyze_image(data: bytes) -> ImageState:
             section_va(info, section),
             divisor,
             include_update_hook=False,
+            include_swap_pacing=False,
             include_wall_angle_interpolation=False,
             include_rotation_offset_interpolation=False,
         )
@@ -1410,6 +1568,7 @@ def analyze_image(data: bytes) -> ImageState:
             no_wall_labels,
             divisor,
             include_update_hook=False,
+            include_swap_pacing=False,
         )
         no_wall_section_payload = slice_at(data, section.raw_pointer, len(no_wall_payload))
         if no_wall_section_payload == no_wall_payload and all_sites_match(
@@ -1444,6 +1603,7 @@ def analyze_image(data: bytes) -> ImageState:
             divisor,
             include_draw_hook=False,
             include_update_hook=False,
+            include_swap_pacing=False,
             include_rotation_offset_interpolation=False,
         )
         old_sites = patched_sites(
@@ -1452,6 +1612,7 @@ def analyze_image(data: bytes) -> ImageState:
             divisor,
             include_draw_hook=False,
             include_update_hook=False,
+            include_swap_pacing=False,
         )
         old_section_payload = slice_at(data, section.raw_pointer, len(old_payload))
         if old_section_payload == old_payload and all_sites_match(data, old_sites, replacement=True):
@@ -1470,6 +1631,7 @@ def analyze_image(data: bytes) -> ImageState:
             include_draw_hook=False,
             include_update_hook=False,
             include_high_tick_legacy_hooks=True,
+            include_swap_pacing=False,
             include_rotation_offset_interpolation=False,
         )
         high_tick_sites = patched_sites(
@@ -1479,6 +1641,7 @@ def analyze_image(data: bytes) -> ImageState:
             include_draw_hook=False,
             include_update_hook=False,
             include_high_tick_legacy_sites=True,
+            include_swap_pacing=False,
         )
         high_tick_section_payload = slice_at(data, section.raw_pointer, len(high_tick_payload))
         if high_tick_section_payload == high_tick_payload and all_sites_match(
@@ -1541,6 +1704,7 @@ def patch_image(
     if state.status in {
         "patched",
         "diagnostic",
+        "legacy-no-swap-pacing",
         "legacy-no-rotation-offset",
         "legacy-no-wall-angle",
         "legacy-render-only",
@@ -1553,6 +1717,7 @@ def patch_image(
                 and state.status
                 in {
                     "diagnostic",
+                    "legacy-no-swap-pacing",
                     "legacy-no-rotation-offset",
                     "legacy-no-wall-angle",
                     "legacy-render-only",
@@ -1622,6 +1787,7 @@ def unpatch_image(data: bytes) -> tuple[bytes, ImageState, bool]:
     if state.status not in {
         "patched",
         "diagnostic",
+        "legacy-no-swap-pacing",
         "legacy-no-rotation-offset",
         "legacy-no-wall-angle",
         "legacy-render-only",
@@ -2219,6 +2385,7 @@ def main(argv: list[str] | None = None) -> int:
                     "original",
                     "patched",
                     "diagnostic",
+                    "legacy-no-swap-pacing",
                     "legacy-no-rotation-offset",
                     "legacy-no-wall-angle",
                     "legacy-speedup",
