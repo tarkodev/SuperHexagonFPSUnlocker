@@ -21,7 +21,8 @@ If update is near 60/s but draw or swap is near 60/s, something outside the simu
 Check these first:
 
 - Make sure Windows is set to the monitor's high refresh mode.
-- Disable in-game VSync.
+- Try both in-game VSync on and off; the Neo Windows patch has swap-aware
+  pacing, but the driver and compositor can still change presentation behavior.
 - Check the GPU driver control panel for forced VSync, frame caps, or half-refresh modes.
 - Try borderless/windowed vs fullscreen if your setup forces different presentation behavior.
 - Close overlays or capture tools that may force a lower present rate.
@@ -30,8 +31,13 @@ Check these first:
 
 Use the Neo Windows patcher with a target FPS that is an integer multiple of the
 display refresh rate. For example, try `288` or `432` on a `144 Hz` display.
-Avoid mismatched targets such as `240` or `360` on `144 Hz`, and disable
-in-game VSync if presentation pacing is uneven.
+Avoid mismatched targets such as `240` or `360` on `144 Hz` when checking
+frame-by-frame recordings.
+
+The current Neo Windows patch includes swap-aware pacing to prevent blocked
+swap/present calls from creating immediate catch-up draws. If duplicate frames
+remain after repatching, compare VSync on/off, fullscreen/windowed mode, and
+capture settings because those can still affect final presentation timing.
 
 ## The game runs too fast
 
