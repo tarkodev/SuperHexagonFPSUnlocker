@@ -31,10 +31,10 @@ uv run superhexagon-fps-unlocker patch --fps 480
 
 ## Notes
 
-For the smoothest result, use an FPS that matches your display refresh rate or
-a multiple of it, such as `144`, `288`, or `432 FPS` on a `144 Hz` display. If
-you still see stutter or duplicate frames, try disabling in-game VSync. Thanks
-to [Stoic Sirius](https://steamcommunity.com/app/221640/discussions/0/3191363817373295516/#c567038823751565778)
+For the smoothest result, disable in-game VSync and use the highest FPS value
+that runs reliably on your setup. Some refresh rates, especially `144 Hz`, may
+still show uneven frame pacing with consecutive new frames and occasional
+duplicate frames. Thanks to [Stoic Sirius](https://steamcommunity.com/app/221640/discussions/0/3191363817373295516/#c567038823751565778)
 for the frame-pacing report.
 
 Close the game before patching or restoring.
