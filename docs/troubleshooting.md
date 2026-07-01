@@ -26,6 +26,13 @@ Check these first:
 - Try borderless/windowed vs fullscreen if your setup forces different presentation behavior.
 - Close overlays or capture tools that may force a lower present rate.
 
+## Duplicate frames on 144 Hz or similar displays
+
+Use the Neo Windows patcher with a target FPS that is an integer multiple of the
+display refresh rate. For example, try `288` or `432` on a `144 Hz` display.
+Avoid mismatched targets such as `240` or `360` on `144 Hz`, and disable
+in-game VSync if presentation pacing is uneven.
+
 ## The game runs too fast
 
 That usually means an older speedup patch is still installed or the executable was patched by another tool.

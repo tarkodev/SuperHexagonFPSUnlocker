@@ -18,21 +18,28 @@ Install Python 3.10+ and `uv`, then run from this folder:
 uv run superhexagon-fps-unlocker
 ```
 
-Choose to patch at `120 FPS`, `240 FPS`, `360 FPS`, `480 FPS`, or a custom FPS value!
+On Neo Windows, choose to patch at `90 FPS`, `120 FPS`, `144 FPS`, `165 FPS`,
+`240 FPS`, `360 FPS`, or a custom FPS value. Neo Linux and Pre-Neo Windows keep
+the older `120 FPS`, `240 FPS`, `360 FPS`, and `480 FPS` choices.
 
 ## Commands
 
 ```text
 uv run superhexagon-fps-unlocker status
 uv run superhexagon-fps-unlocker restore
-uv run superhexagon-fps-unlocker patch --fps 960
+uv run superhexagon-fps-unlocker patch --fps 144
 ```
 
-Custom FPS values must be multiples of `60` and at least `120`.
+Neo Windows custom FPS values can be any whole number above `60`. Neo Linux and
+Pre-Neo Windows custom FPS values must still be multiples of `60` and at least
+`120`.
 
 ## Notes
 
-For example, if you patch the game to `120 FPS` but your display is running at `90 Hz`, VSync will make the game run at `90 FPS` without issues. Disable VSync only if you want to force the patched FPS value.
+For the cleanest pacing, choose a target FPS that is an integer multiple of your
+display refresh rate, such as `288 FPS` or `432 FPS` on a `144 Hz` display. If
+you see stutter or duplicate frames, disable in-game VSync and avoid targets
+that do not divide evenly into your refresh rate.
 
 Close the game before patching or restoring.
 

@@ -15,9 +15,10 @@ from earlier experiments are detected so users can migrate cleanly.
 Default menu choices:
 
 ```text
-120, 240, 360, 480
+90, 120, 144, 165, 240, 360
 ```
 
-Any multiple of `60` from `120` upward is accepted from the command line or the
-menu's custom option. Very high modes are experimental and depend on the display,
-driver, and system pacing.
+The Neo Windows patcher accepts any whole FPS value above `60` from the command
+line or the menu's custom option. `60 FPS` is handled by restoring the original
+executable. Very high modes are experimental and depend on the display, driver,
+and system pacing.

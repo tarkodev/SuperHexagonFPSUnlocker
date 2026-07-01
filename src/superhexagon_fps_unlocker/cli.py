@@ -10,14 +10,17 @@ from . import steam
 from .patchers import neo_linux, neo_windows, pre_neo_windows
 
 
-PRESET_REFRESH_CHOICES = (120, 240, 360, 480)
-MIN_PATCH_REFRESH_HZ = 120
-REFRESH_HZ_STEP = 60
+DEFAULT_PRESET_REFRESH_CHOICES = (120, 240, 360, 480)
+NEO_WINDOWS_PRESET_REFRESH_CHOICES = (90, 120, 144, 165, 240, 360)
 BUILD_CHOICES = ("auto", "neo-windows", "neo-linux", "pre-neo-windows")
 BUILD_HELP = (
     "Force a build patcher instead of auto-detecting. "
     "Use neo-windows for the Neo Windows Steam build, neo-linux for the Neo Linux Steam build, "
     "or pre-neo-windows for the Pre-Neo Windows Steam build. Default: auto."
+)
+FPS_HELP = (
+    "Target FPS. Neo Windows accepts any whole FPS above 60. "
+    "Neo Linux and Pre-Neo Windows require a multiple of 60 at least 120. Default: 240."
 )
 
 GOOD_STATES = {"original", "patched", "diagnostic"}
@@ -54,6 +57,8 @@ PATCHERS = {
     "neo-linux": Patcher("neo-linux", "Neo Linux Steam build", neo_linux),
     "pre-neo-windows": Patcher("pre-neo-windows", "Pre-Neo Windows Steam build", pre_neo_windows),
 }
+PATCH_ERRORS = (neo_windows.PatchError, neo_linux.PatchError, pre_neo_windows.PatchError)
+CLI_ERRORS = (CliError,) + PATCH_ERRORS
 
 
 def state_score(patcher: Patcher, state: object) -> int:
@@ -122,11 +127,23 @@ def print_detection(detection: Detection) -> None:
     print(detection.patcher.module.format_state(detection.state))
 
 
-def validate_patch_refresh_hz(refresh_hz: int) -> None:
-    if refresh_hz < MIN_PATCH_REFRESH_HZ or refresh_hz % REFRESH_HZ_STEP:
-        raise CliError(
-            f"FPS must be a multiple of {REFRESH_HZ_STEP} greater than or equal to {MIN_PATCH_REFRESH_HZ}"
-        )
+def validate_patch_refresh_hz(detection: Detection, refresh_hz: int) -> None:
+    try:
+        detection.patcher.module.validate_refresh_hz(refresh_hz)
+    except PATCH_ERRORS as exc:
+        raise CliError(str(exc)) from exc
+
+
+def refresh_rule_text(detection: Detection) -> str:
+    if detection.patcher.key == "neo-windows":
+        return "whole FPS greater than 60"
+    return "multiple of 60, minimum 120"
+
+
+def preset_refresh_choices(detection: Detection) -> tuple[int, ...]:
+    if detection.patcher.key == "neo-windows":
+        return NEO_WINDOWS_PRESET_REFRESH_CHOICES
+    return DEFAULT_PRESET_REFRESH_CHOICES
 
 
 def run_status(detection: Detection) -> int:
@@ -135,7 +152,7 @@ def run_status(detection: Detection) -> int:
 
 
 def run_patch(detection: Detection, refresh_hz: int, force: bool = False, backup: bool = True) -> int:
-    validate_patch_refresh_hz(refresh_hz)
+    validate_patch_refresh_hz(detection, refresh_hz)
     state = detection.patcher.module.patch_file(
         detection.path,
         refresh_hz=refresh_hz,
@@ -166,7 +183,7 @@ def run_diagnose(
     warmup_seconds: float,
     force: bool = False,
 ) -> int:
-    validate_patch_refresh_hz(refresh_hz)
+    validate_patch_refresh_hz(detection, refresh_hz)
     if duration_seconds <= 0:
         raise CliError("--seconds must be greater than zero")
     if warmup_seconds < 0:
@@ -207,24 +224,29 @@ def interactive_status_text(state: object) -> str:
 
 
 def print_interactive_menu(detection: Detection) -> None:
+    presets = preset_refresh_choices(detection)
+    custom_option = len(presets) + 1
+    restore_option = len(presets) + 2
+    status_option = len(presets) + 3
+
     print("SuperHexagonFPSUnlocker")
     print()
     print(f"Executable: {detection.path}")
     print(f"Build: {interactive_build_name(detection.patcher)}")
     print(f"Status: {interactive_status_text(detection.state)}")
     print()
-    for index, refresh_hz in enumerate(PRESET_REFRESH_CHOICES, start=1):
+    for index, refresh_hz in enumerate(presets, start=1):
         print(f"[{index}] Patch at {refresh_hz} FPS")
-    print("[5] Patch at custom FPS")
-    print("[6] Restore original executable")
-    print("[7] Show status")
+    print(f"[{custom_option}] Patch at custom FPS")
+    print(f"[{restore_option}] Restore original executable")
+    print(f"[{status_option}] Show status")
     print("[0] Quit")
     print()
 
 
-def prompt_custom_refresh_hz() -> int | None:
+def prompt_custom_refresh_hz(detection: Detection) -> int | None:
     while True:
-        raw_value = input(f"Enter custom FPS (multiple of {REFRESH_HZ_STEP}, minimum {MIN_PATCH_REFRESH_HZ}): ").strip()
+        raw_value = input(f"Enter custom FPS ({refresh_rule_text(detection)}): ").strip()
         if not raw_value:
             return None
         try:
@@ -233,7 +255,7 @@ def prompt_custom_refresh_hz() -> int | None:
             print("Error: FPS must be a whole number")
             continue
         try:
-            validate_patch_refresh_hz(refresh_hz)
+            validate_patch_refresh_hz(detection, refresh_hz)
         except CliError as exc:
             print(f"Error: {exc}")
             continue
@@ -242,15 +264,19 @@ def prompt_custom_refresh_hz() -> int | None:
 
 def run_interactive_menu(detection: Detection) -> int:
     print_interactive_menu(detection)
+    presets = preset_refresh_choices(detection)
+    custom_option = str(len(presets) + 1)
+    restore_option = str(len(presets) + 2)
+    status_option = str(len(presets) + 3)
     actions = {
         **{
             str(index): ("patch", refresh_hz)
-            for index, refresh_hz in enumerate(PRESET_REFRESH_CHOICES, start=1)
+            for index, refresh_hz in enumerate(presets, start=1)
         },
-        **{str(refresh_hz): ("patch", refresh_hz) for refresh_hz in PRESET_REFRESH_CHOICES},
-        "6": ("restore", None),
+        **{str(refresh_hz): ("patch", refresh_hz) for refresh_hz in presets},
+        restore_option: ("restore", None),
         "restore": ("restore", None),
-        "7": ("status", None),
+        status_option: ("status", None),
         "status": ("status", None),
     }
 
@@ -259,8 +285,8 @@ def run_interactive_menu(detection: Detection) -> int:
             choice = input("Select an option: ").strip().lower()
             if choice in {"0", "q", "quit", "exit"}:
                 return 0
-            if choice in {"5", "custom", "c"}:
-                refresh_hz = prompt_custom_refresh_hz()
+            if choice in {custom_option, "custom", "c"}:
+                refresh_hz = prompt_custom_refresh_hz(detection)
                 if refresh_hz is None:
                     return 0
                 print()
@@ -268,7 +294,7 @@ def run_interactive_menu(detection: Detection) -> int:
 
             action = actions.get(choice)
             if action is None:
-                print("Invalid option. Choose 1, 2, 3, 4, 5, 6, 7, or 0.")
+                print(f"Invalid option. Choose 1-{len(presets) + 3} or 0.")
                 continue
 
             command, refresh_hz = action
@@ -319,7 +345,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FPS",
         type=int,
         default=240,
-        help="Target FPS. Must be a multiple of 60 and at least 120. Default: 240.",
+        help=FPS_HELP,
     )
     patch.add_argument("--force", action="store_true")
     patch.add_argument(
@@ -346,7 +372,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FPS",
         type=int,
         default=240,
-        help="Diagnostic target FPS. Must be a multiple of 60 and at least 120. Default: 240.",
+        help=FPS_HELP.replace("Target FPS.", "Diagnostic target FPS."),
     )
     diagnose.add_argument("--seconds", type=float, default=5.0)
     diagnose.add_argument("--warmup", type=float, default=2.0)
@@ -389,6 +415,6 @@ def main(argv: list[str] | None = None) -> int:
 
         parser.error(f"unknown command: {command}")
         return 2
-    except (CliError, neo_windows.PatchError, neo_linux.PatchError, pre_neo_windows.PatchError) as exc:
+    except CLI_ERRORS as exc:
         print(f"Error: {exc}")
         return 1

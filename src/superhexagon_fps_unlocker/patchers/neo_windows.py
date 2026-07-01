@@ -30,8 +30,7 @@ EXE_NAME = "SuperHexagon.exe"
 
 ORIGINAL_REFRESH_HZ = 60
 DEFAULT_REFRESH_HZ = 240
-MIN_PATCH_REFRESH_HZ = 120
-REFRESH_HZ_STEP = 60
+MIN_PATCH_REFRESH_HZ = ORIGINAL_REFRESH_HZ + 1
 
 SUPPORTED_EXE_SHA256 = (
     "72b0c26053c37edd3435def461e9027cd6ffad12032db2fd0b32c256fdbee6b9"
@@ -341,17 +340,15 @@ def restore_legacy_speed_patch(data: bytes | bytearray) -> bytes:
 def validate_refresh_hz(refresh_hz: int) -> None:
     if not is_supported_refresh_hz(refresh_hz):
         raise PatchError(
-            f"FPS must be {ORIGINAL_REFRESH_HZ} or a multiple of "
-            f"{REFRESH_HZ_STEP} greater than or equal to {MIN_PATCH_REFRESH_HZ}"
+            f"FPS must be {ORIGINAL_REFRESH_HZ} to restore or a whole number "
+            f"greater than {ORIGINAL_REFRESH_HZ}"
         )
 
 
 def is_supported_refresh_hz(refresh_hz: int | None) -> bool:
     if refresh_hz is None:
         return False
-    return refresh_hz == ORIGINAL_REFRESH_HZ or (
-        refresh_hz >= MIN_PATCH_REFRESH_HZ and refresh_hz % REFRESH_HZ_STEP == 0
-    )
+    return refresh_hz == ORIGINAL_REFRESH_HZ or refresh_hz >= MIN_PATCH_REFRESH_HZ
 
 
 def make_init_hook(start_va: int) -> bytes:
@@ -2141,9 +2138,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FPS",
         type=int,
         default=DEFAULT_REFRESH_HZ,
-        help=f"Target FPS. Must be {ORIGINAL_REFRESH_HZ} or a multiple of "
-        f"{REFRESH_HZ_STEP} greater than or equal to {MIN_PATCH_REFRESH_HZ}. "
-        f"Default: {DEFAULT_REFRESH_HZ}.",
+        help=f"Target FPS. Use {ORIGINAL_REFRESH_HZ} to restore, or any whole number "
+        f"greater than {ORIGINAL_REFRESH_HZ}. Default: {DEFAULT_REFRESH_HZ}.",
     )
     patch.add_argument(
         "--force",
@@ -2180,9 +2176,8 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="FPS",
         type=int,
         default=DEFAULT_REFRESH_HZ,
-        help=f"Diagnostic target FPS. Must be {ORIGINAL_REFRESH_HZ} or a multiple of "
-        f"{REFRESH_HZ_STEP} greater than or equal to {MIN_PATCH_REFRESH_HZ}. "
-        f"Default: {DEFAULT_REFRESH_HZ}.",
+        help=f"Diagnostic target FPS. Use {ORIGINAL_REFRESH_HZ} to restore, or any whole number "
+        f"greater than {ORIGINAL_REFRESH_HZ}. Default: {DEFAULT_REFRESH_HZ}.",
     )
     diagnose.add_argument(
         "--seconds",
