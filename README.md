@@ -34,7 +34,8 @@ uv run superhexagon-fps-unlocker patch --fps 480
 For the cleanest pacing, choose a target FPS that is an integer multiple of your
 display refresh rate, such as `288 FPS` or `432 FPS` on a `144 Hz` display. If
 you see stutter or duplicate frames, disable in-game VSync and avoid targets
-that do not divide evenly into your refresh rate.
+that do not divide evenly into your refresh rate. Thanks to [Stoic Sirius](https://steamcommunity.com/app/221640/discussions/0/3191363817373295516/#c567038823751565778)
+for the frame-pacing report.
 
 Close the game before patching or restoring.
 

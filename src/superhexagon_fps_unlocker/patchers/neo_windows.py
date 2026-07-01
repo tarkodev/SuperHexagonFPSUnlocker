@@ -29,7 +29,6 @@ GAME_DIR_NAME = "Super Hexagon"
 EXE_NAME = "SuperHexagon.exe"
 
 ORIGINAL_REFRESH_HZ = 60
-DEFAULT_REFRESH_HZ = 240
 MIN_PATCH_REFRESH_HZ = ORIGINAL_REFRESH_HZ + 1
 
 SUPPORTED_EXE_SHA256 = (
@@ -2137,9 +2136,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="refresh_hz",
         metavar="FPS",
         type=int,
-        default=DEFAULT_REFRESH_HZ,
+        required=True,
         help=f"Target FPS. Use {ORIGINAL_REFRESH_HZ} to restore, or any whole number "
-        f"greater than {ORIGINAL_REFRESH_HZ}. Default: {DEFAULT_REFRESH_HZ}.",
+        f"greater than {ORIGINAL_REFRESH_HZ}.",
     )
     patch.add_argument(
         "--force",
@@ -2175,9 +2174,9 @@ def build_parser() -> argparse.ArgumentParser:
         dest="refresh_hz",
         metavar="FPS",
         type=int,
-        default=DEFAULT_REFRESH_HZ,
+        required=True,
         help=f"Diagnostic target FPS. Use {ORIGINAL_REFRESH_HZ} to restore, or any whole number "
-        f"greater than {ORIGINAL_REFRESH_HZ}. Default: {DEFAULT_REFRESH_HZ}.",
+        f"greater than {ORIGINAL_REFRESH_HZ}.",
     )
     diagnose.add_argument(
         "--seconds",

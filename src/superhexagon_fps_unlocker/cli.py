@@ -20,7 +20,7 @@ BUILD_HELP = (
 )
 FPS_HELP = (
     "Target FPS. Neo Windows accepts any whole FPS above 60. "
-    "Neo Linux and Pre-Neo Windows require a multiple of 60 at least 120. Default: 240."
+    "Neo Linux and Pre-Neo Windows require a multiple of 60 at least 120."
 )
 
 GOOD_STATES = {"original", "patched", "diagnostic"}
@@ -344,7 +344,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="refresh_hz",
         metavar="FPS",
         type=int,
-        default=240,
+        required=True,
         help=FPS_HELP,
     )
     patch.add_argument("--force", action="store_true")
@@ -371,7 +371,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="refresh_hz",
         metavar="FPS",
         type=int,
-        default=240,
+        required=True,
         help=FPS_HELP.replace("Target FPS.", "Diagnostic target FPS."),
     )
     diagnose.add_argument("--seconds", type=float, default=5.0)
