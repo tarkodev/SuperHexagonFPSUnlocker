@@ -34,12 +34,12 @@ uv run superhexagon-fps-unlocker diagnose --fps 240 --seconds 5 --warmup 2
 uv run superhexagon-fps-unlocker restore
 ```
 
-On Neo Windows, `90`, `120`, `144`, `165`, `240`, and `360` are the default menu
-choices. Custom values can be any whole FPS value above `60`.
+On Neo Windows and Neo Linux, `90`, `120`, `144`, `165`, `240`, and `360` are
+the default menu choices.
+Custom values can be any whole FPS value above `60`.
 
-On Neo Linux and Pre-Neo Windows, `120`, `240`, `360`, and `480` remain the
-default menu choices. Custom values must be multiples of `60` and at least
-`120`.
+On Pre-Neo Windows, `120`, `240`, `360`, and `480` are the default menu choices.
+Custom values must be multiples of `60` and at least `120`.
 
 `60 FPS` is handled by restoring the original executable:
 
@@ -95,7 +95,8 @@ Runtime diagnostics are currently implemented for the Windows patchers only.
 ## How It Works
 
 The patch keeps gameplay simulation on the original fixed cadence and runs
-rendering at a higher cadence. Visual state is interpolated during draw so the
-game does not simply run faster.
+rendering at a higher cadence. Neo Windows also interpolates selected visual
+state during draw. Neo Linux currently keeps draw-time state untouched while
+the Linux object layout is validated.
 
 Neo and Pre-Neo are different binaries, so they use separate patchers.

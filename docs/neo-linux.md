@@ -11,9 +11,19 @@ Size: 2253968 bytes
 It patches the known x86-64 build by byte signatures and refuses unknown layouts
 unless `--force` is supplied.
 
-The patch raises the game's frame-rate fields, updates the native frame
-interval, and scales the expected frame delta so time-based gameplay logic stays
-on the original 60 FPS cadence.
+The patch keeps simulation timing at the original 60 FPS cadence and raises
+native render pacing to the selected target. The Linux patcher leaves the
+game's draw-time visual state untouched; the Neo Windows interpolation path is
+not enabled here until the Linux-only object layout is fully validated.
+
+Default menu choices:
+
+```text
+90, 120, 144, 165, 240, 360
+```
+
+Custom values can be any whole FPS value above `60`. `60 FPS` is handled by
+restoring the original executable.
 
 Unlike the Neo Windows patcher, this patcher does not add a new executable
 section. It reuses part of the original `setGameFrameRate` code area as patch

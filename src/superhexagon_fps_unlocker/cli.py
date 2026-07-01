@@ -11,7 +11,7 @@ from .patchers import neo_linux, neo_windows, pre_neo_windows
 
 
 DEFAULT_PRESET_REFRESH_CHOICES = (120, 240, 360, 480)
-NEO_WINDOWS_PRESET_REFRESH_CHOICES = (90, 120, 144, 165, 240, 360)
+NEO_PRESET_REFRESH_CHOICES = (90, 120, 144, 165, 240, 360)
 BUILD_CHOICES = ("auto", "neo-windows", "neo-linux", "pre-neo-windows")
 BUILD_HELP = (
     "Force a build patcher instead of auto-detecting. "
@@ -19,8 +19,8 @@ BUILD_HELP = (
     "or pre-neo-windows for the Pre-Neo Windows Steam build. Default: auto."
 )
 FPS_HELP = (
-    "Target FPS. Neo Windows accepts any whole FPS above 60. "
-    "Neo Linux and Pre-Neo Windows require a multiple of 60 at least 120."
+    "Target FPS. Neo Windows and Neo Linux accept any whole FPS above 60. "
+    "Pre-Neo Windows requires a multiple of 60 at least 120."
 )
 
 GOOD_STATES = {"original", "patched", "diagnostic"}
@@ -69,6 +69,8 @@ def state_score(patcher: Patcher, state: object) -> int:
     if status in GOOD_STATES:
         return 100 if supported else 80
     if patcher.key == "neo-windows" and status in NEO_LEGACY_STATES:
+        return 70
+    if isinstance(status, str) and status.startswith("legacy-"):
         return 70
     if status == "conflict":
         return 50
@@ -136,14 +138,14 @@ def validate_patch_refresh_hz(detection: Detection, refresh_hz: int) -> None:
 
 
 def refresh_rule_text(detection: Detection) -> str:
-    if detection.patcher.key == "neo-windows":
+    if detection.patcher.key in {"neo-windows", "neo-linux"}:
         return "whole FPS greater than 60"
     return "multiple of 60, minimum 120"
 
 
 def preset_refresh_choices(detection: Detection) -> tuple[int, ...]:
-    if detection.patcher.key == "neo-windows":
-        return NEO_WINDOWS_PRESET_REFRESH_CHOICES
+    if detection.patcher.key in {"neo-windows", "neo-linux"}:
+        return NEO_PRESET_REFRESH_CHOICES
     return DEFAULT_PRESET_REFRESH_CHOICES
 
 
@@ -154,6 +156,9 @@ def run_status(detection: Detection) -> int:
 
 def run_patch(detection: Detection, refresh_hz: int, force: bool = False, backup: bool = True) -> int:
     validate_patch_refresh_hz(detection, refresh_hz)
+    if refresh_hz == getattr(detection.patcher.module, "ORIGINAL_REFRESH_HZ", None):
+        return run_restore(detection)
+
     state = detection.patcher.module.patch_file(
         detection.path,
         refresh_hz=refresh_hz,
