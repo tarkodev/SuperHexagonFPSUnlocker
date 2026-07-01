@@ -361,11 +361,7 @@ def make_init_hook(start_va: int) -> bytes:
     return bytes(code)
 
 
-def make_swap_accumulator_clamp(
-    start_va: int,
-    swap_observed_va: int,
-    include_present_snap: bool = True,
-) -> bytes:
+def make_swap_accumulator_clamp(start_va: int, swap_observed_va: int) -> bytes:
     flag_rva = swap_observed_va - SUPPORTED_IMAGE_BASE
     code = bytearray()
 
@@ -375,34 +371,18 @@ def make_swap_accumulator_clamp(
             raise PatchError("internal swap pacing short jump out of range")
         code[offset + 1] = rel & 0xFF
 
-    if include_present_snap:
-        append_image_base_to_eax(code, start_va)
-        code += bytes.fromhex("52")  # push edx
-        code += bytes.fromhex("33 d2")  # xor edx, edx
-        code += bytes.fromhex("86 90") + struct.pack("<I", flag_rva)  # xchg [flag], dl
-        code += bytes.fromhex("84 d2")  # test dl, dl
-        code += bytes.fromhex("5a")  # pop edx
-        no_swap_jump = len(code)
-        code += bytes.fromhex("74 00")  # je done
-    else:
-        append_image_base_to_eax(code, start_va)
-        code += bytes.fromhex("80 b8") + struct.pack("<I", flag_rva) + b"\x00"
-        no_swap_jump = len(code)
-        code += bytes.fromhex("74 00")  # je done
-        code += bytes.fromhex("c6 80") + struct.pack("<I", flag_rva) + b"\x00"
+    append_image_base_to_eax(code, start_va)
+    code += bytes.fromhex("80 b8") + struct.pack("<I", flag_rva) + b"\x00"
+    no_swap_jump = len(code)
+    code += bytes.fromhex("74 00")  # je done
+    code += bytes.fromhex("c6 80") + struct.pack("<I", flag_rva) + b"\x00"
     code += bytes.fromhex("83 bb d4 04 00 00 00")  # cmp render_acc high, 0
     high_ready_jump = len(code)
     code += bytes.fromhex("75 00")  # jne set ready
-    if include_present_snap:
-        code += bytes.fromhex("8b 83 b8 00 00 00")  # mov eax, render_interval low
-        code += bytes.fromhex("c1 e8 03")  # tolerance = render_interval / 8
-        code += bytes.fromhex("03 83 d0 04 00 00")  # add render_acc low
-        code += bytes.fromhex("3b 83 b8 00 00 00")  # compare against render_interval low
-    else:
-        code += bytes.fromhex("8b 83 d0 04 00 00")  # mov eax, render_acc low
-        code += bytes.fromhex("3b 83 b8 00 00 00")  # cmp eax, render_interval low
+    code += bytes.fromhex("8b 83 d0 04 00 00")  # mov eax, render_acc low
+    code += bytes.fromhex("3b 83 b8 00 00 00")  # cmp eax, render_interval low
     low_done_jump = len(code)
-    code += bytes.fromhex("72 00" if include_present_snap else "76 00")  # jb/jbe done
+    code += bytes.fromhex("76 00")  # jbe done
     set_ready_offset = len(code)
     patch_short_jump(high_ready_jump, set_ready_offset)
     code += bytes.fromhex("8b 83 b8 00 00 00")  # mov eax, render_interval low
@@ -715,34 +695,19 @@ def make_update_hook(
     start_va: int,
     previous_rotation_offset_va: int | None = None,
     update_counter_va: int | None = None,
-    compact_image_base: bool = True,
 ) -> bytes:
     code = bytearray()
     if update_counter_va is not None or previous_rotation_offset_va is not None:
         code += bytes.fromhex("50")  # push eax
         code += bytes.fromhex("52")  # push edx
-        if (
-            compact_image_base
-            and update_counter_va is not None
-            and previous_rotation_offset_va is not None
-        ):
+        if update_counter_va is not None:
+            append_increment_counter(code, start_va, update_counter_va)
+        if previous_rotation_offset_va is not None:
             append_image_base_to_eax(code, start_va)
-            code += bytes.fromhex("ff 80") + struct.pack(
-                "<I", update_counter_va - SUPPORTED_IMAGE_BASE
-            )
             code += bytes.fromhex("8b 91 a0 01 00 00")  # mov edx, [ecx+0x1a0]
             code += bytes.fromhex("89 90") + struct.pack(
                 "<I", previous_rotation_offset_va - SUPPORTED_IMAGE_BASE
             )
-        else:
-            if update_counter_va is not None:
-                append_increment_counter(code, start_va, update_counter_va)
-            if previous_rotation_offset_va is not None:
-                append_image_base_to_eax(code, start_va)
-                code += bytes.fromhex("8b 91 a0 01 00 00")  # mov edx, [ecx+0x1a0]
-                code += bytes.fromhex("89 90") + struct.pack(
-                    "<I", previous_rotation_offset_va - SUPPORTED_IMAGE_BASE
-                )
         code += bytes.fromhex("5a")  # pop edx
         code += bytes.fromhex("58")  # pop eax
     code += UPDATE_HOOK_ORIGINAL_BYTES
@@ -794,7 +759,6 @@ def build_patch_section(
     include_high_tick_legacy_hooks: bool = False,
     include_diagnostics: bool = False,
     include_swap_pacing: bool = True,
-    include_present_snap: bool = True,
     include_wall_angle_interpolation: bool = True,
     include_rotation_offset_interpolation: bool = True,
 ) -> tuple[bytes, dict[str, int]]:
@@ -837,11 +801,7 @@ def build_patch_section(
     if include_swap_pacing:
         start_va = section_virtual_address + len(payload)
         labels["swap_accumulator_clamp"] = start_va
-        payload += make_swap_accumulator_clamp(
-            start_va,
-            labels["swap_observed"],
-            include_present_snap=include_present_snap,
-        )
+        payload += make_swap_accumulator_clamp(start_va, labels["swap_observed"])
         while len(payload) % 4:
             payload += b"\x90"
 
@@ -882,7 +842,6 @@ def build_patch_section(
             start_va,
             previous_rotation_offset_va=labels.get("previous_rotation_offset"),
             update_counter_va=labels.get("diag_update_counter") if include_diagnostics else None,
-            compact_image_base=include_present_snap,
         )
         while len(payload) % 4:
             payload += b"\x90"
@@ -1492,35 +1451,6 @@ def analyze_image(data: bytes) -> ImageState:
         ):
             return ImageState("diagnostic", digest, len(data), True, refresh_hz=divisor)
 
-        old_snap_diagnostic_payload, old_snap_diagnostic_labels = build_patch_section(
-            section_va(info, section),
-            divisor,
-            include_diagnostics=True,
-            include_present_snap=False,
-        )
-        old_snap_diagnostic_section_payload = slice_at(
-            data, section.raw_pointer, len(old_snap_diagnostic_payload)
-        )
-        old_snap_diagnostic_sites = patched_sites(
-            section_va(info, section),
-            old_snap_diagnostic_labels,
-            divisor,
-            include_diagnostics=True,
-        )
-        if old_snap_diagnostic_section_payload == old_snap_diagnostic_payload and all_sites_match(
-            data,
-            old_snap_diagnostic_sites,
-            replacement=True,
-        ):
-            return ImageState(
-                "legacy-no-present-snap",
-                digest,
-                len(data),
-                True,
-                refresh_hz=divisor,
-                reason="old patch lacks present-aware accumulator snapping",
-            )
-
         old_diagnostic_payload, old_diagnostic_labels = build_patch_section(
             section_va(info, section),
             divisor,
@@ -1556,27 +1486,6 @@ def analyze_image(data: bytes) -> ImageState:
         sites = patched_sites(section_va(info, section), labels, divisor)
         if section_payload == payload and all_sites_match(data, sites, replacement=True):
             return ImageState("patched", digest, len(data), True, refresh_hz=divisor)
-
-        old_snap_payload, old_snap_labels = build_patch_section(
-            section_va(info, section),
-            divisor,
-            include_present_snap=False,
-        )
-        old_snap_section_payload = slice_at(data, section.raw_pointer, len(old_snap_payload))
-        old_snap_sites = patched_sites(section_va(info, section), old_snap_labels, divisor)
-        if old_snap_section_payload == old_snap_payload and all_sites_match(
-            data,
-            old_snap_sites,
-            replacement=True,
-        ):
-            return ImageState(
-                "legacy-no-present-snap",
-                digest,
-                len(data),
-                True,
-                refresh_hz=divisor,
-                reason="old patch lacks present-aware accumulator snapping",
-            )
 
         no_swap_payload, no_swap_labels = build_patch_section(
             section_va(info, section),
@@ -1795,7 +1704,6 @@ def patch_image(
     if state.status in {
         "patched",
         "diagnostic",
-        "legacy-no-present-snap",
         "legacy-no-swap-pacing",
         "legacy-no-rotation-offset",
         "legacy-no-wall-angle",
@@ -1809,7 +1717,6 @@ def patch_image(
                 and state.status
                 in {
                     "diagnostic",
-                    "legacy-no-present-snap",
                     "legacy-no-swap-pacing",
                     "legacy-no-rotation-offset",
                     "legacy-no-wall-angle",
@@ -1880,7 +1787,6 @@ def unpatch_image(data: bytes) -> tuple[bytes, ImageState, bool]:
     if state.status not in {
         "patched",
         "diagnostic",
-        "legacy-no-present-snap",
         "legacy-no-swap-pacing",
         "legacy-no-rotation-offset",
         "legacy-no-wall-angle",
@@ -2479,7 +2385,6 @@ def main(argv: list[str] | None = None) -> int:
                     "original",
                     "patched",
                     "diagnostic",
-                    "legacy-no-present-snap",
                     "legacy-no-swap-pacing",
                     "legacy-no-rotation-offset",
                     "legacy-no-wall-angle",

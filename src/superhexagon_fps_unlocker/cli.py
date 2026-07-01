@@ -25,7 +25,6 @@ FPS_HELP = (
 
 GOOD_STATES = {"original", "patched", "diagnostic"}
 NEO_LEGACY_STATES = {
-    "legacy-no-present-snap",
     "legacy-no-swap-pacing",
     "legacy-no-rotation-offset",
     "legacy-no-wall-angle",
