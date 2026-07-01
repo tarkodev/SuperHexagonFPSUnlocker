@@ -18,21 +18,16 @@ Install Python 3.10+ and `uv`, then run from this folder:
 uv run superhexagon-fps-unlocker
 ```
 
-On Neo Windows, choose to patch at `90 FPS`, `120 FPS`, `144 FPS`, `165 FPS`,
-`240 FPS`, `360 FPS`, or a custom FPS value. Neo Linux and Pre-Neo Windows keep
-the older `120 FPS`, `240 FPS`, `360 FPS`, and `480 FPS` choices.
+Choose to patch at `90 FPS`, `120 FPS`, `144 FPS`, `165 FPS`, `240 FPS`,
+`360 FPS`, or a custom FPS value!
 
 ## Commands
 
 ```text
 uv run superhexagon-fps-unlocker status
 uv run superhexagon-fps-unlocker restore
-uv run superhexagon-fps-unlocker patch --fps 144
+uv run superhexagon-fps-unlocker patch --fps 480
 ```
-
-Neo Windows custom FPS values can be any whole number above `60`. Neo Linux and
-Pre-Neo Windows custom FPS values must still be multiples of `60` and at least
-`120`.
 
 ## Notes
 
