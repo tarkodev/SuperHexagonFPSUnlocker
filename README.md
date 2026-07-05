@@ -2,7 +2,7 @@
 
 I love Super Hexagon. It was the first rhythm game I really got into, back when I was playing on my first Windows 7 PC, and I remember spending entire nights completely hooked on it.
 
-Recently, I wanted to play it again and was surprised to see that the PC version was still capped at 60 FPS, even though I now use a 240 Hz monitor. The Android and iOS versions can already run at up to 120 FPS, so I wanted to see if the desktop version could be pushed further too.
+Recently, I wanted to play it again and was surprised to see that the PC version was still capped at 60 FPS, even though I now use a 240 Hz monitor. The Android and iOS versions can already run at up to 240 FPS, so I wanted to see if the desktop version could be pushed further too.
 
 After a lot of testing, and with some help from Codex using GPT-5.5, I managed to patch the executable and unlock higher refresh rates without any graphical issues. I also tried patching the old Pre-Neo version, but it was too unstable to really recommend. I left the code in the project for reference, but this project focuses on the Neo version, which is the current default version shipped on Steam.
 
